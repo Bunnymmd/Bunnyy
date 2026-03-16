@@ -5029,18 +5029,48 @@ function handleFileInput(input) {
         const file = input.files[0];
         const reader = new FileReader();
         reader.onload = function(e) {
-            const originalData = e.target.result;
-            if (tempAvatarContext === 'widget') {
-                saveImage(currentTargetId, originalData);
-            } else {
-                updateContextAvatar(originalData);
-            }
+            // Compression Logic
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                // Determine dimensions based on context
+                if (tempAvatarContext === 'widget') {
+                    if (currentTargetId.indexOf('avatar') !== -1) {
+                        width = 300; height = 300;
+                    } else if (currentTargetId.startsWith('icon') || currentTargetId.startsWith('app')) {
+                        width = 150; height = 150;
+                    } else {
+                        const maxDim = 1080;
+                        if (width > height) {
+                            if (width > maxDim) { height *= maxDim / width; width = maxDim; }
+                        } else {
+                            if (height > maxDim) { width *= maxDim / height; height = maxDim; }
+                        }
+                    }
+                } else {
+                    // For internal avatars (SD, Contact)
+                    width = 300; height = 300;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                // Compress to JPEG 0.7
+                const compressedData = canvas.toDataURL('image/jpeg', 0.7);
+                if (tempAvatarContext === 'widget') {
+                    saveImage(currentTargetId, compressedData);
+                } else {
+                    updateContextAvatar(compressedData);
+                }
+            };
+            img.src = e.target.result;
         };
         reader.readAsDataURL(file);
     }
     input.value = '';
 }
-
 function openAppPage(pageId) {
     document.getElementById(pageId).classList.add('active');
 }
@@ -5821,10 +5851,8 @@ function handleImportData(input) {
                 Object.keys(data).forEach(key => {
                     localStorage.setItem(key, data[key]);
                 });
-                setTimeout(() => {
-                    alert('导入成功，页面将刷新');
-                    location.reload();
-                }, 500);
+                alert('导入成功，页面将刷新');
+                location.reload();
             } catch (err) {
                 alert('导入失败：文件格式错误');
             }
@@ -5833,7 +5861,6 @@ function handleImportData(input) {
     }
     input.value = '';
 }
-
 function clearAllData() {
     if(confirm('确定清除所有数据？此操作不可恢复！')) {
         localStorage.clear();
@@ -6004,7 +6031,22 @@ function handleSdFile(input) {
         const file = input.files[0];
         const reader = new FileReader();
         reader.onload = function(e) {
-            updateContextAvatar(e.target.result);
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let width = 300; // Avatar size
+                let height = 300;
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressedData = canvas.toDataURL('image/jpeg', 0.7);
+                // This function is kept for legacy direct input if needed, 
+                // but handleFileInput now handles logic via tempAvatarContext
+                // We can reuse updateContextAvatar here if called directly
+                updateContextAvatar(compressedData);
+            };
+            img.src = e.target.result;
         };
         reader.readAsDataURL(file);
     }
@@ -6158,7 +6200,19 @@ function handleContactFile(input) {
         const file = input.files[0];
         const reader = new FileReader();
         reader.onload = function(e) {
-            updateContextAvatar(e.target.result);
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let width = 300; 
+                let height = 300;
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressedData = canvas.toDataURL('image/jpeg', 0.7);
+                updateContextAvatar(compressedData);
+            };
+            img.src = e.target.result;
         };
         reader.readAsDataURL(file);
     }
@@ -7531,7 +7585,25 @@ function handleChatImage(input) {
         const file = input.files[0];
         const reader = new FileReader();
         reader.onload = function(e) {
-            sendUserMessage(e.target.result, 'image');
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const maxDim = 800;
+                if (width > height) {
+                    if (width > maxDim) { height *= maxDim / width; width = maxDim; }
+                } else {
+                    if (height > maxDim) { width *= maxDim / height; height = maxDim; }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const base64 = canvas.toDataURL('image/jpeg', 0.7);
+                sendUserMessage(base64, 'image');
+            };
+            img.src = e.target.result;
         };
         reader.readAsDataURL(file);
     }
@@ -8437,7 +8509,15 @@ async function saveNewMusic() {
     try {
         if (audioFile) audioSrc = await fileToBase64(audioFile);
         if (coverFile) {
-            coverSrc = await fileToBase64(coverFile);
+            // 提升封面画质到 600x600
+            const base64Cover = await fileToBase64(coverFile);
+            const img = new Image();
+            img.src = base64Cover;
+            await new Promise(r => img.onload = r);
+            const canvas = document.createElement('canvas');
+            canvas.width = 600; canvas.height = 600;
+            canvas.getContext('2d').drawImage(img, 0, 0, 600, 600);
+            coverSrc = canvas.toDataURL('image/jpeg', 0.85);
         }
         let list = JSON.parse(localStorage.getItem('myMusicList') || '[]');
         if (editIndex !== -1) {
